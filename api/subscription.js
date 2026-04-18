@@ -37,7 +37,7 @@ module.exports = async function handler(req, res) {
     const data = rows?.[0] ?? null;
     return res.json({ status: data?.status ?? 'none', updatedAt: data?.updated_at ?? null });
   } catch (e) {
-    console.error('[subscription] error:', e.message);
-    return res.status(500).json({ error: e.message });
+    console.error('[subscription] error:', e.message, e.cause?.message, e.cause?.code);
+    return res.status(500).json({ error: e.message, cause: e.cause?.message ?? null, code: e.cause?.code ?? null });
   }
 };
