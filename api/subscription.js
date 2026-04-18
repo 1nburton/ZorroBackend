@@ -1,5 +1,3 @@
-const { createClient } = require('@supabase/supabase-js');
-
 module.exports = async function handler(req, res) {
   if (req.method !== 'GET') return res.status(405).end('Method Not Allowed');
 
@@ -7,33 +5,39 @@ module.exports = async function handler(req, res) {
   if (!email) return res.status(400).json({ error: 'email query param required' });
 
   const { SUPABASE_URL, SUPABASE_SERVICE_KEY } = process.env;
-  console.log('[subscription] env check', { hasUrl: !!SUPABASE_URL, hasKey: !!SUPABASE_SERVICE_KEY });
-
   if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) {
-    return res.status(500).json({ error: 'Server misconfigured' });
+    return res.status(500).json({ error: 'missing env vars' });
   }
 
-  const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
-    auth: { persistSession: false },
-    global: { fetch: (url, opts) => fetch(url, { ...opts, signal: AbortSignal.timeout(4000) }) },
-  });
-
+  // Use raw REST API instead of SDK to avoid any SDK connection overhead
   try {
-    const { data, error } = await supabase
-      .from('subscriptions')
-      .select('status, updated_at')
-      .eq('email', email.trim().toLowerCase())
-      .maybeSingle();
+    const url = `${SUPABASE_URL}/rest/v1/subscriptions?email=eq.${encodeURIComponent(email.trim().toLowerCase())}&select=status,updated_at&limit=1`;
 
-    if (error) {
-      console.error('[subscription] query error:', error.message, error.code);
-      return res.status(500).json({ error: error.message });
+    const controller = new AbortController();
+    const timeout    = setTimeout(() => controller.abort(), 4000);
+
+    const response = await fetch(url, {
+      headers: {
+        apikey:        SUPABASE_SERVICE_KEY,
+        Authorization: `Bearer ${SUPABASE_SERVICE_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeout);
+
+    if (!response.ok) {
+      const text = await response.text();
+      console.error('[subscription] supabase error:', response.status, text);
+      return res.status(500).json({ error: `Supabase error: ${response.status}` });
     }
 
-    console.log('[subscription] result:', data);
+    const rows = await response.json();
+    const data = rows?.[0] ?? null;
     return res.json({ status: data?.status ?? 'none', updatedAt: data?.updated_at ?? null });
   } catch (e) {
-    console.error('[subscription] fetch error:', e.message);
+    console.error('[subscription] error:', e.message);
     return res.status(500).json({ error: e.message });
   }
 };
