@@ -3,9 +3,12 @@ const { createClient } = require('@supabase/supabase-js');
 
 async function upsert(supabase, email, status, customerId, subscriptionId) {
   console.log('[webhook] upsert', email, status);
-  const { error } = await supabase.from('subscriptions').upsert(
+  const norm = email.toLowerCase();
+
+  // Update subscriptions table
+  const { error: e1 } = await supabase.from('subscriptions').upsert(
     {
-      email:                  email.toLowerCase(),
+      email:                  norm,
       status,
       stripe_customer_id:     customerId     ?? null,
       stripe_subscription_id: subscriptionId ?? null,
@@ -13,7 +16,15 @@ async function upsert(supabase, email, status, customerId, subscriptionId) {
     },
     { onConflict: 'email' }
   );
-  if (error) console.error('[webhook] upsert error', error.message);
+  if (e1) console.error('[webhook] subscriptions upsert error', e1.message);
+
+  // Mirror plan status to users table so app gets consistent data
+  const plan = status === 'active' ? 'pro' : 'free';
+  const { error: e2 } = await supabase
+    .from('users')
+    .update({ plan, pro_until: null })
+    .eq('email', norm);
+  if (e2) console.error('[webhook] users update error', e2.message);
 }
 
 async function emailFromCustomer(stripe, customerId) {
