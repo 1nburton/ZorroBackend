@@ -20,34 +20,62 @@ module.exports = async function handler(req, res) {
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
   // 1. Get billing_email from users table
-  const { data: user } = await supabase
+  const { data: user, error: userErr } = await supabase
     .from('users')
     .select('billing_email')
     .eq('phone', phone)
     .maybeSingle();
 
-  const billingEmail = user?.billing_email ?? null;
-  if (!billingEmail) return res.json({ card: null, portalUrl: null });
+  console.log('[billing] user lookup:', { phone, billingEmail: user?.billing_email, userErr: userErr?.message });
 
-  // 2. Get stripe_customer_id from subscriptions table
-  const { data: sub } = await supabase
+  const billingEmail = user?.billing_email ?? null;
+  if (!billingEmail) return res.json({ card: null, portalUrl: null, debug: 'no billing_email' });
+
+  // 2. Get stripe_customer_id + subscription_id from subscriptions table
+  const { data: sub, error: subErr } = await supabase
     .from('subscriptions')
-    .select('stripe_customer_id')
+    .select('stripe_customer_id, stripe_subscription_id')
     .eq('email', billingEmail)
     .maybeSingle();
 
-  const customerId = sub?.stripe_customer_id ?? null;
-  if (!customerId) return res.json({ card: null, portalUrl: null });
+  console.log('[billing] sub lookup:', { billingEmail, customerId: sub?.stripe_customer_id, subErr: subErr?.message });
+
+  const customerId     = sub?.stripe_customer_id     ?? null;
+  const subscriptionId = sub?.stripe_subscription_id ?? null;
+  if (!customerId) return res.json({ card: null, portalUrl: null, debug: 'no stripe_customer_id' });
 
   const stripe = Stripe(STRIPE_SECRET_KEY);
 
-  // 3. Fetch default payment method from Stripe
+  // 3. Fetch payment method — check customer default first, then subscription default
   let card = null;
   try {
     const customer = await stripe.customers.retrieve(customerId, {
       expand: ['invoice_settings.default_payment_method'],
     });
-    const pm = customer.invoice_settings?.default_payment_method;
+
+    let pm = customer.invoice_settings?.default_payment_method ?? null;
+    console.log('[billing] customer pm:', pm?.id ?? 'none');
+
+    // Fallback: check subscription's default_payment_method
+    if (!pm && subscriptionId) {
+      try {
+        const stripeSub = await stripe.subscriptions.retrieve(subscriptionId, {
+          expand: ['default_payment_method'],
+        });
+        pm = stripeSub.default_payment_method ?? null;
+        console.log('[billing] subscription pm:', pm?.id ?? 'none');
+      } catch (e) {
+        console.error('[billing] subscription retrieve error:', e.message);
+      }
+    }
+
+    // Fallback: list all payment methods and take the first card
+    if (!pm) {
+      const pms = await stripe.paymentMethods.list({ customer: customerId, type: 'card', limit: 1 });
+      pm = pms.data?.[0] ?? null;
+      console.log('[billing] listed pm:', pm?.id ?? 'none');
+    }
+
     if (pm?.card) {
       card = {
         brand:    pm.card.brand,
@@ -57,8 +85,10 @@ module.exports = async function handler(req, res) {
       };
     }
   } catch (e) {
-    console.error('[billing] failed to fetch payment method:', e.message);
+    console.error('[billing] payment method fetch error:', e.message);
   }
+
+  console.log('[billing] card result:', card);
 
   // 4. Create a Stripe Customer Portal session
   let portalUrl = null;
@@ -69,7 +99,8 @@ module.exports = async function handler(req, res) {
     });
     portalUrl = session.url;
   } catch (e) {
-    console.error('[billing] failed to create portal session:', e.message);
+    // Portal not activated in Stripe dashboard — not a blocking error
+    console.error('[billing] portal session error:', e.message);
   }
 
   return res.json({ card, portalUrl });
