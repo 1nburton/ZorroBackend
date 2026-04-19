@@ -18,12 +18,12 @@ async function upsert(supabase, email, status, customerId, subscriptionId) {
   );
   if (e1) console.error('[webhook] subscriptions upsert error', e1.message);
 
-  // Mirror plan status to users table so app gets consistent data
+  // Mirror plan status to users table (matched by billing_email)
   const plan = status === 'active' ? 'pro' : 'free';
   const { error: e2 } = await supabase
     .from('users')
     .update({ plan, pro_until: null })
-    .eq('email', norm);
+    .eq('billing_email', norm);
   if (e2) console.error('[webhook] users update error', e2.message);
 }
 

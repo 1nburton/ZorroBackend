@@ -1,11 +1,11 @@
 /**
  * POST /api/auth/register
- * Body: { email, passwordHash, phone, plan }
+ * Body: { phone, passwordHash, plan }
  *
- * Note: the app sends a SHA-256 pre-hash of the password so the raw password
- * never travels over the network. We bcrypt that hash server-side before storing.
+ * Phone is the primary identifier. No email required.
+ * passwordHash is SHA-256 pre-hash from client; bcrypted server-side.
  */
-const bcrypt       = require('bcryptjs');
+const bcrypt           = require('bcryptjs');
 const { createClient } = require('@supabase/supabase-js');
 
 module.exports = async function handler(req, res) {
@@ -16,32 +16,29 @@ module.exports = async function handler(req, res) {
     return res.status(500).json({ error: 'Server misconfigured' });
   }
 
-  const { email, passwordHash, phone, plan } = req.body ?? {};
-  if (!email || !passwordHash || !phone) {
-    return res.status(400).json({ error: 'email, passwordHash and phone are required' });
+  const { phone, passwordHash, plan } = req.body ?? {};
+  if (!phone || !passwordHash) {
+    return res.status(400).json({ error: 'phone and passwordHash are required' });
   }
 
-  const norm = email.trim().toLowerCase();
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
-  // Check if email already exists
+  // Check if phone already exists
   const { data: existing } = await supabase
     .from('users')
-    .select('email')
-    .eq('email', norm)
+    .select('phone')
+    .eq('phone', phone)
     .maybeSingle();
 
   if (existing) {
-    return res.status(409).json({ error: 'An account with this email already exists.' });
+    return res.status(409).json({ error: 'An account with this phone number already exists.' });
   }
 
-  // bcrypt the pre-hash (cost factor 10 is fine for a pre-hashed input)
   const stored = await bcrypt.hash(passwordHash, 10);
 
   const { error } = await supabase.from('users').insert({
-    email:    norm,
+    phone,
     password: stored,
-    phone:    phone,
     plan:     plan ?? 'free',
   });
 
@@ -50,5 +47,5 @@ module.exports = async function handler(req, res) {
     return res.status(500).json({ error: 'Failed to create account.' });
   }
 
-  return res.status(201).json({ email: norm, plan: plan ?? 'free' });
+  return res.status(201).json({ phone, plan: plan ?? 'free' });
 };

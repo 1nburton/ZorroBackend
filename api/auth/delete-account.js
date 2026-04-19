@@ -1,6 +1,6 @@
 /**
  * DELETE /api/auth/delete-account
- * Body: { email }
+ * Body: { phone }
  * Removes the user row from the users table.
  */
 const { createClient } = require('@supabase/supabase-js');
@@ -13,14 +13,14 @@ module.exports = async function handler(req, res) {
     return res.status(500).json({ error: 'Server misconfigured' });
   }
 
-  const { email } = req.body ?? {};
-  if (!email) return res.status(400).json({ error: 'email required' });
+  const { phone } = req.body ?? {};
+  if (!phone) return res.status(400).json({ error: 'phone required' });
 
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
   const { error } = await supabase
     .from('users')
     .delete()
-    .eq('email', email.trim().toLowerCase());
+    .eq('phone', phone);
 
   if (error) return res.status(500).json({ error: 'Internal error' });
 

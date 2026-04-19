@@ -1,5 +1,5 @@
 /**
- * GET /api/auth/get-user?email=user@example.com
+ * GET /api/auth/get-user?phone=+15551234567
  * Returns public user fields (no password). Used on app launch to refresh session.
  */
 const { createClient } = require('@supabase/supabase-js');
@@ -12,23 +12,23 @@ module.exports = async function handler(req, res) {
     return res.status(500).json({ error: 'Server misconfigured' });
   }
 
-  const { email } = req.query;
-  if (!email) return res.status(400).json({ error: 'email required' });
+  const { phone } = req.query;
+  if (!phone) return res.status(400).json({ error: 'phone required' });
 
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
   const { data, error } = await supabase
     .from('users')
-    .select('email, plan, pro_until, phone')
-    .eq('email', email.trim().toLowerCase())
+    .select('phone, plan, pro_until, billing_email')
+    .eq('phone', phone)
     .maybeSingle();
 
   if (error) return res.status(500).json({ error: 'Internal error' });
   if (!data)  return res.status(404).json({ error: 'User not found' });
 
   return res.json({
-    email:    data.email,
-    plan:     data.plan     ?? 'free',
-    proUntil: data.pro_until ?? null,
-    phone:    data.phone    ?? null,
+    phone:        data.phone,
+    plan:         data.plan          ?? 'free',
+    proUntil:     data.pro_until     ?? null,
+    billingEmail: data.billing_email ?? null,
   });
 };
