@@ -2,5 +2,11 @@
   "functions": {
     "api/webhook.js":      { "maxDuration": 10 },
     "api/subscription.js": { "maxDuration": 5  }
-  }
+  },
+  "headers": [
+    {
+      "source": "/api/webhook",
+      "headers": [{ "key": "Cache-Control", "value": "no-store" }]
+    }
+  ]
 }

@@ -38,6 +38,7 @@ async function emailFromCustomer(stripe, customerId) {
 }
 
 module.exports = async function handler(req, res) {
+  res.setHeader('Cache-Control', 'no-store');
   if (req.method !== 'POST') return res.status(405).end('Method Not Allowed');
 
   const { STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET, SUPABASE_URL, SUPABASE_SERVICE_KEY } = process.env;
