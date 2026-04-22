@@ -87,6 +87,7 @@ module.exports = async function handler(req, res) {
       if (email) await upsert(supabase, email, 'active', obj.customer, obj.subscription);
       break;
     }
+    case 'customer.subscription.created':
     case 'customer.subscription.updated': {
       const email = await emailFromCustomer(stripe, obj.customer);
       if (email) {
